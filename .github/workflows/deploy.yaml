@@ -24,7 +24,7 @@ jobs:
         id: meta_health_adapter
         uses: docker/metadata-action@v3
         with:
-          images: ghcr.io/${{ github.repository }}-api
+          images: ghcr.io/${{ github.repository }}-binary
           labels: |
             org.opencontainers.image.licenses=MIT OR Apache-2.0
       - name: health adapter image build
