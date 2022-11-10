@@ -8,18 +8,26 @@ use warp::{reply::with_status, Filter};
 
 #[derive(clap::Parser)]
 pub struct Arguments {
+    /// On which address the server should listen.
     #[clap(long, env, default_value = "0.0.0.0:8080")]
     pub bind_address: SocketAddr,
 
+    /// Where to read the dshackle metrics from.
     #[clap(long, env, default_value = "http://127.0.0.1:8081/metrics")]
     pub metrics_url: Url,
 
+    /// How many blocks does a node have to lag behind to be considered unhealthy.
     #[clap(long, env, default_value = "5.0")]
     pub unhealthy_block_lag: f64,
 
+    /// Name of the node this adapter monitors. This has to match with what is configured
+    /// in `dshackle.yaml` as the node `id`.
     #[clap(long, env, default_value = "cow-nethermind")]
     pub node_id: String,
 
+    /// Name of the block chain the monitored belongs to. This does not get configured in
+    /// `dshackle.yaml`. Possible values: "ETH" and "GOERLI". Gnosis chain or xdai are not
+    /// supported by `dshackle` and the other supported options we don't care about.
     #[clap(long, env, default_value = "ETH")]
     pub chain_id: String,
 }
