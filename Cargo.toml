@@ -5,7 +5,7 @@ edition = "2021"
 
 [workspace]
 members = ["lazy_node"]
-default-members = ["lazy_node"]
+default-members = [".", "lazy_node"]
 
 [dependencies]
 anyhow = "1"
