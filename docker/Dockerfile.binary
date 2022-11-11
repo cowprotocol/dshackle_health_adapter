@@ -15,4 +15,8 @@ FROM docker.io/debian:bullseye-slim
 RUN apt-get update && apt-get install -y ca-certificates tini && apt-get clean
 COPY --from=cargo-build /src/target/release/dshackle_health_adapter /usr/local/bin/dshackle_health_adapter
 
-ENTRYPOINT ["/usr/bin/tini"]
+ENV HEALTH_URL=""
+ENV NODE_ID=""
+ENV BIND_ADDRESS=""
+
+ENTRYPOINT /usr/local/bin/dshackle_health_adapter --bind-address $BIND_ADDRESS --health-url $HEALTH_URL --node-id $NODE_ID
