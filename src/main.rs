@@ -102,20 +102,19 @@ async fn is_healthy(args: &Arguments) -> Result<(Status, u64)> {
             .as_str()
             .parse()?;
 
-        let response = match args.unhealthy_lag {
-            Some(max_lag) => {
+        let result = match (status, args.unhealthy_lag) {
+            (Status::Ok | Status::Lagging, Some(max_lag)) => {
+                // Adjust the status based on our internal lagging parameter.
                 if lag > max_lag {
-                    // Even if `dshackle` reports OK we want to report `Lagging`
-                    // because the lag is higher than we want to tolerate.
                     Ok((Status::Lagging, lag))
                 } else {
                     Ok((Status::Ok, lag))
                 }
             }
             // use whatever `dshackle` reports
-            None => Ok((status, lag)),
+            (status, _) => Ok((status, lag)),
         };
-        return response;
+        return result;
     }
 
     Err(anyhow::anyhow!(
