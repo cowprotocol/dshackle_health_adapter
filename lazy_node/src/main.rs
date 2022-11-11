@@ -70,8 +70,11 @@ impl Context {
         R: Serialize,
         S: DeserializeOwned,
     {
+        static UID: AtomicU64 = AtomicU64::new(0);
+
+        let uid = UID.fetch_add(1, Ordering::SeqCst);
         let body = serde_json::to_string(request)?;
-        tracing::trace!(%body, ">");
+        tracing::trace!(%uid, %body, ">");
 
         let response = self
             .client
@@ -83,7 +86,7 @@ impl Context {
 
         let status = response.status();
         let body = response.text().await?;
-        tracing::trace!(%body, ?status, "<");
+        tracing::trace!(%uid, %body, ?status, "<");
         ensure!(status.is_success(), "{body}");
 
         let response = serde_json::from_str(&body)?;
@@ -129,7 +132,7 @@ async fn main() {
         .and_then(move |request: Value| {
             let context = context.clone();
             async move {
-                let json = match Request::deserialize(request.clone()) {
+                let json = match Request::<eth::BlockNumber>::deserialize(request.clone()) {
                     Ok(request) => Ok(warp::reply::json(&context.block_number(request).await)),
                     Err(_) => context
                         .proxy_request(request)

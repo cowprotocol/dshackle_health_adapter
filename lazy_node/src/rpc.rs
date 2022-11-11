@@ -18,7 +18,7 @@ pub mod eth {
             D: Deserializer<'de>,
         {
             u64::from_str_radix(
-                &Cow::<str>::deserialize(deserializer)?
+                Cow::<str>::deserialize(deserializer)?
                     .strip_prefix("0x")
                     .ok_or_else(|| de::Error::custom("missing 0x prefix"))?,
                 16,
