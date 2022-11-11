@@ -20,4 +20,4 @@ ENV NODE_ID=""
 ENV BIND_ADDRESS=""
 ENV UNHEALTHY_LAG=""
 
-ENTRYPOINT /usr/local/bin/dshackle_health_adapter --bind-address $BIND_ADDRESS --health-url $HEALTH_URL --node-id $NODE_ID --unhealthy-lag UNHEALTHY_LAG
+ENTRYPOINT /usr/local/bin/dshackle_health_adapter --bind-address $BIND_ADDRESS --health-url $HEALTH_URL --node-id $NODE_ID --unhealthy-lag $UNHEALTHY_LAG
