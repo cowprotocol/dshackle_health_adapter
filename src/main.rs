@@ -10,7 +10,7 @@ use std::{
 use url::Url;
 use warp::{reply::with_status, Filter};
 
-#[derive(clap::Parser)]
+#[derive(clap::Parser, Debug)]
 pub struct Arguments {
     /// On which address the server should listen.
     #[clap(long, env, default_value = "0.0.0.0:8080")]
@@ -24,6 +24,11 @@ pub struct Arguments {
     /// in `dshackle.yaml` as the node `id`.
     #[clap(long, env, default_value = "cow-nethermind")]
     pub node_id: String,
+
+    /// How many blocks a node may lag behind before being considered unhealthy.
+    /// If this value is unset we simply use whatever dshackle reports.
+    #[clap(long, env)]
+    pub unhealthy_lag: Option<u64>,
 }
 
 struct HealthReply(Result<(Status, u64)>);
@@ -39,6 +44,7 @@ impl warp::Reply for HealthReply {
     }
 }
 
+#[derive(Debug)]
 enum Status {
     Ok,
     Lagging,
@@ -70,10 +76,11 @@ impl Display for Status {
 /// dshackle_upstreams_lag{chain="ETH",upstream="cow-nethermind",} 0.0
 /// Where "ETH"=`chain_id` and "cow-nethermind"=`node_id.
 async fn is_healthy(args: &Arguments) -> Result<(Status, u64)> {
-    let metrics = reqwest::get(args.health_url.clone()).await?.text().await?;
+    let response = reqwest::get(args.health_url.clone()).await?.text().await?;
+    println!("dshackle responded:\n{response}");
     let regex_string = format!("{} (.*) with lag=(.*)", args.node_id);
     let re = Regex::new(&regex_string).unwrap();
-    for line in metrics.split('\n') {
+    for line in response.split('\n') {
         let capture_groups = match re.captures(line) {
             None => continue,
             Some(groups) => groups,
@@ -95,16 +102,31 @@ async fn is_healthy(args: &Arguments) -> Result<(Status, u64)> {
             .as_str()
             .parse()?;
 
-        return Ok((status, lag));
+        let response = match args.unhealthy_lag {
+            Some(max_lag) => {
+                if lag > max_lag {
+                    // Even if `dshackle` reports OK we want to report `Lagging`
+                    // because the lag is higher than we want to tolerate.
+                    Ok((Status::Lagging, lag))
+                } else {
+                    Ok((Status::Ok, lag))
+                }
+            }
+            // use whatever `dshackle` reports
+            None => Ok((status, lag)),
+        };
+        return response;
     }
 
     Err(anyhow::anyhow!(
-        "regex could not find the node lag within dshackle's metrics"
+        "regex could not find the node lag within dshackle's detailed health endpoint"
     ))
 }
 
 async fn get_health(args: &Arguments) -> Result<impl warp::Reply, Infallible> {
-    Ok(HealthReply(is_healthy(args).await))
+    let response = is_healthy(args).await;
+    println!("returning /health response: {response:?}");
+    Ok(HealthReply(response))
 }
 
 #[tokio::main]
@@ -112,5 +134,6 @@ async fn main() {
     let args = Box::new(Arguments::parse());
     let args = Box::leak(args);
     let health = warp::path("health").and_then(|| get_health(args));
+    println!("starting dshackle_health_adapter with validated arguments: {args:#?}");
     warp::serve(health).run(args.bind_address).await;
 }

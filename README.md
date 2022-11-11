@@ -13,10 +13,11 @@ Afterwards you just have to pass the correct CLI arguments to the binary:
 Usage: dshackle_health_adapter [OPTIONS]
 
 Options:
-      --bind-address <BIND_ADDRESS>  On which address the server should listen [env: BIND_ADDRESS=] [default: 0.0.0.0:8080]
-      --health-url <HEALTH_URL>      Where to read the dshackle detailed health info from [env: HEALTH_URL=] [default: http://127.0.0.1:8082/health?detailed]
-      --node-id <NODE_ID>            Name of the node this adapter monitors. This has to match with what is configured in `dshackle.yaml` as the node `id` [env: NODE_ID=] [default: cow-nethermind]
-  -h, --help                         Print help information
+      --bind-address <BIND_ADDRESS>    On which address the server should listen [env: BIND_ADDRESS=] [default: 0.0.0.0:8080]
+      --health-url <HEALTH_URL>        Where to read the dshackle detailed health info from [env: HEALTH_URL=] [default: http://127.0.0.1:8082/health?detailed]
+      --node-id <NODE_ID>              Name of the node this adapter monitors. This has to match with what is configured in `dshackle.yaml` as the node `id` [env: NODE_ID=] [default: cow-nethermind]
+      --unhealthy-lag <UNHEALTHY_LAG>  How many blocks a node may lag behind before being considered unhealthy. If this value is unset we simply use whatever dshackle reports [env: UNHEALTHY_LAG=]
+  -h, --help                           Print help information
 ```
 
 By default it will run on port `8080` and will connect to a `dshackle` instance running on `localhost`. It forwards `/health` requests to `dshackle`'s health endpoint running on port `8082` (default).  
