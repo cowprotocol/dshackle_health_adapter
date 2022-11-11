@@ -2,7 +2,11 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use regex::Regex;
 use reqwest::StatusCode;
-use std::{convert::Infallible, net::SocketAddr};
+use std::{
+    convert::Infallible,
+    fmt::{self, Display, Formatter},
+    net::SocketAddr,
+};
 use url::Url;
 use warp::{reply::with_status, Filter};
 
@@ -12,49 +16,62 @@ pub struct Arguments {
     #[clap(long, env, default_value = "0.0.0.0:8080")]
     pub bind_address: SocketAddr,
 
-    /// Where to read the dshackle metrics from.
-    #[clap(long, env, default_value = "http://127.0.0.1:8081/metrics")]
-    pub metrics_url: Url,
-
-    /// How many blocks does a node have to lag behind to be considered unhealthy.
-    #[clap(long, env, default_value = "5.0")]
-    pub unhealthy_block_lag: f64,
+    /// Where to read the dshackle detailed health info from.
+    #[clap(long, env, default_value = "http://127.0.0.1:8082/health?detailed")]
+    pub health_url: Url,
 
     /// Name of the node this adapter monitors. This has to match with what is configured
     /// in `dshackle.yaml` as the node `id`.
     #[clap(long, env, default_value = "cow-nethermind")]
     pub node_id: String,
-
-    /// Name of the block chain the monitored belongs to. This does not get configured in
-    /// `dshackle.yaml`. Possible values: "ETH" and "GOERLI". Gnosis chain or xdai are not
-    /// supported by `dshackle` and the other supported options we don't care about.
-    #[clap(long, env, default_value = "ETH")]
-    pub chain_id: String,
 }
 
-struct HealthReply(Result<bool>);
+struct HealthReply(Result<(Status, u64)>);
 
 /// Turns the return value of `is_healthy()` into a `warp::Reply`.
 impl warp::Reply for HealthReply {
     fn into_response(self) -> warp::reply::Response {
         let result = match self.0 {
-            Ok(true) => with_status("OK".to_string(), StatusCode::OK),
-            Ok(false) => with_status("lagging".to_string(), StatusCode::INTERNAL_SERVER_ERROR),
+            Ok((status, lag)) => with_status(format!("{status}({lag})"), status.http_status_code()),
             Err(err) => with_status(err.to_string(), StatusCode::INTERNAL_SERVER_ERROR),
         };
         result.into_response()
     }
 }
 
+enum Status {
+    Ok,
+    Lagging,
+    Unavailable,
+    Other(String),
+}
+
+impl Status {
+    fn http_status_code(&self) -> StatusCode {
+        match self {
+            Self::Ok => StatusCode::OK,
+            _ => StatusCode::SERVICE_UNAVAILABLE,
+        }
+    }
+}
+
+impl Display for Status {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(match self {
+            Self::Ok => "OK",
+            Self::Lagging => "LAGGING",
+            Self::Unavailable => "UNAVAILABLE",
+            Self::Other(message) => message,
+        })
+    }
+}
+
 /// Requests the metrics from dshackle and parses the node lag from such a line:
 /// dshackle_upstreams_lag{chain="ETH",upstream="cow-nethermind",} 0.0
 /// Where "ETH"=`chain_id` and "cow-nethermind"=`node_id.
-async fn is_healthy(args: &Arguments) -> Result<bool> {
-    let metrics = reqwest::get(args.metrics_url.clone()).await?.text().await?;
-    let regex_string = format!(
-        "dshackle_upstreams_lag\\{{chain=\"{}\",upstream=\"{}\",\\}} (.*)",
-        args.chain_id, args.node_id
-    );
+async fn is_healthy(args: &Arguments) -> Result<(Status, u64)> {
+    let metrics = reqwest::get(args.health_url.clone()).await?.text().await?;
+    let regex_string = format!("{} (.*) with lag=(.*)", args.node_id);
     let re = Regex::new(&regex_string).unwrap();
     for line in metrics.split('\n') {
         let capture_groups = match re.captures(line) {
@@ -62,18 +79,23 @@ async fn is_healthy(args: &Arguments) -> Result<bool> {
             Some(groups) => groups,
         };
 
-        let lag: f64 = capture_groups
+        let status = match capture_groups
             .get(1)
-            .context("regex contained no capture group")?
+            .context("missing status capture group")?
+            .as_str()
+        {
+            "OK" => Status::Ok,
+            "LAGGING" => Status::Lagging,
+            "UNAVAILABLE" => Status::Unavailable,
+            other => Status::Other(other.to_owned()),
+        };
+        let lag: u64 = capture_groups
+            .get(2)
+            .context("missing lag capture group")?
             .as_str()
             .parse()?;
 
-        anyhow::ensure!(
-            lag.is_finite() && lag.is_sign_positive(),
-            "received a non-sensical lag value"
-        );
-
-        return Ok(lag <= args.unhealthy_block_lag);
+        return Ok((status, lag));
     }
 
     Err(anyhow::anyhow!(
